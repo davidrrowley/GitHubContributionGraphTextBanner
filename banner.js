@@ -207,15 +207,18 @@ Usage:
   node banner.js "Your Text" [options]
 
 Options:
-  --preview      Show an ASCII art preview of the banner
-  --year <YYYY>  Target contribution graph year (default: current year)
-  --save         Save ready-to-run bash + PowerShell scripts to disk
-  --sunday       Use Sunday-first week layout (US GitHub). Default is Monday-first (UK/EU).
-  --help         Show this help
+  --preview            Show an ASCII art preview of the banner
+  --year <YYYY>        Target contribution graph year (default: current year)
+  --save               Save ready-to-run bash + PowerShell scripts to disk
+  --sunday             Use Sunday-first week layout (US GitHub). Default is Monday-first (UK/EU).
+  --times <HH:MM,...>  Commit times per banner day (default: 12:00). Multiple times = multiple
+                       commits per day, making banner cells brighter relative to any ghost commits.
+  --help               Show this help
 
 Examples:
   node banner.js "Vibe Code" --preview --year 2024
   node banner.js "Vibe Code" --year 2024 --save
+  node banner.js "Vibe Code" --year 2024 --save --times 13:00,15:00,16:00
 `);
     return;
   }
@@ -226,6 +229,7 @@ Examples:
   let save = false;
   let mondayFirst = true; // default: Monday-first (UK/EU GitHub)
   let year = new Date().getFullYear();
+  let times = ['12:00']; // default: single commit at noon
 
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--preview') {
@@ -236,6 +240,8 @@ Examples:
       mondayFirst = false;
     } else if (args[i] === '--year' && args[i + 1]) {
       year = parseInt(args[++i], 10);
+    } else if (args[i] === '--times' && args[i + 1]) {
+      times = args[++i].split(',').map(t => t.trim());
     } else if (!args[i].startsWith('--')) {
       text = args[i];
     }
@@ -311,21 +317,23 @@ Examples:
       console.log(`\nNo ${jsonPath} found — using computed dates from font bitmaps.`);
     }
 
-    const finalBashLines = scriptDates.map(d => {
+    const finalBashLines = scriptDates.flatMap(d => {
       const ds = fmt(d);
-      return `GIT_AUTHOR_DATE="${ds}T12:00:00" GIT_COMMITTER_DATE="${ds}T12:00:00" git commit --allow-empty -m "."`;
+      return times.map(t => `GIT_AUTHOR_DATE="${ds}T${t}:00" GIT_COMMITTER_DATE="${ds}T${t}:00" git commit --allow-empty -m "."`);
     });
-    const finalPs1Lines = scriptDates.map(d => {
+    const finalPs1Lines = scriptDates.flatMap(d => {
       const ds = fmt(d);
-      return `$env:GIT_AUTHOR_DATE="${ds}T12:00:00"; $env:GIT_COMMITTER_DATE="${ds}T12:00:00"; git commit --allow-empty -m "."`;
+      return times.map(t => `$env:GIT_AUTHOR_DATE="${ds}T${t}:00"; $env:GIT_COMMITTER_DATE="${ds}T${t}:00"; git commit --allow-empty -m "."`);
     });
 
-    const bashScript = `#!/usr/bin/env bash\n# Run inside a GitHub repo to paint "${text}" on your contribution graph for ${year}\nset -e\n\n${finalBashLines.join('\n')}\ngit push\n`;
-    const ps1Script = `# Run inside a GitHub repo to paint "${text}" on your contribution graph for ${year}\n\n${finalPs1Lines.join('\n')}\ngit push\n`;
+    const totalCommits = scriptDates.length * times.length;
+    const bashScript = `#!/usr/bin/env bash\n# Run inside a GitHub repo to paint "${text}" on your contribution graph for ${year}\n# ${times.length} commit(s) per day at: ${times.join(', ')} — total ${totalCommits} commits\nset -e\n\n${finalBashLines.join('\n')}\ngit push\n`;
+    const ps1Script = `# Run inside a GitHub repo to paint "${text}" on your contribution graph for ${year}\n# ${times.length} commit(s) per day at: ${times.join(', ')} — total ${totalCommits} commits\n\n${finalPs1Lines.join('\n')}\ngit push\n`;
     fs.writeFileSync(`banner_${year}.sh`, bashScript);
     fs.writeFileSync(`banner_${year}.ps1`, ps1Script);
     console.log(`Saved bash script:       banner_${year}.sh`);
     console.log(`Saved PowerShell script: banner_${year}.ps1`);
+    console.log(`Commits per day: ${times.length} (${times.join(', ')}) — ${totalCommits} total commits`);
     console.log('\nTo run on Windows (PowerShell), from inside your GitHub repo:');
     console.log(`  .\\banner_${year}.ps1\n`);
     console.log('To run on Mac/Linux (bash), from inside your GitHub repo:');
